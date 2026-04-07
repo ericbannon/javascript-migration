@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CG Lockfile Inspector</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f8fafc;
+    }
+    h1 { margin-bottom: 0.5rem; }
+    .upload {
+      margin-bottom: 1rem;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      font-family: monospace;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      background: white;
+    }
+    th, td {
+      padding: 8px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+      font-size: 14px;
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .cg-secured { background: #dcfce7; }
+    .cg-upstream { background: #fef3c7; }
+    .npm-upstream { background: #e0f2fe; }
+    .artifactory { background: #ede9fe; }
+    .unknown { background: #f1f5f9; }
+  </style>
+</head>
+
+<body>
+
+<h1>CG Lockfile Inspector</h1>
+<p>Identify CG secured packages vs CG upstream vs npm upstream from Artifactory URLs.</p>
+
+<div class="upload">
+  <input type="file" id="fileInput" />
+</div>
+
+<table id="results">
+  <thead>
+    <tr>
+      <th>Package</th>
+      <th>Version</th>
+      <th>Source</th>
+      <th>Resolved URL</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+function classify(resolved) {
+  if (!resolved) return { label: "Unknown", cls: "unknown" };
+
+  const isArtifactory = resolved.includes("chainguard.jfrog.io");
+  const isLibraries = resolved.includes("libraries.cgr.dev");
+  const isR2 = resolved.includes("cloudflarestorage.com");
+  const isRelative = resolved.includes("_relative/javascript-upstream");
+  const isNpm = resolved.includes("registry.npmjs.org");
+
+  if (isArtifactory && (isLibraries || isR2)) {
+    return { label: "CG secured", cls: "cg-secured" };
+  }
+
+  if (isArtifactory && isRelative) {
+    return { label: "CG upstream", cls: "cg-upstream" };
+  }
+
+  if (isArtifactory && isNpm) {
+    return { label: "npm upstream", cls: "npm-upstream" };
+  }
+
+  if (isArtifactory) {
+    return { label: "Artifactory", cls: "artifactory" };
+  }
+
+  if (isLibraries || isR2) {
+    return { label: "CG secured", cls: "cg-secured" };
+  }
+
+  if (isRelative) {
+    return { label: "CG upstream", cls: "cg-upstream" };
+  }
+
+  if (isNpm) {
+    return { label: "npm upstream", cls: "npm-upstream" };
+  }
+
+  return { label: "Unknown", cls: "unknown" };
+}
+
+function extractPackages(lock) {
+  const results = [];
+
+  if (lock.packages) {
+    for (const [path, pkg] of Object.entries(lock.packages)) {
+      if (!pkg.version) continue;
+
+      const name = pkg.name || path.split("node_modules/").pop();
+
+      results.push({
+        name,
+        version: pkg.version,
+        resolved: pkg.resolved || ""
+      });
+    }
+  }
+
+  return results;
+}
+
+function render(packages) {
+  const tbody = document.querySelector("#results tbody");
+  tbody.innerHTML = "";
+
+  packages.forEach(pkg => {
+    const { label, cls } = classify(pkg.resolved);
+
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td>${pkg.name}</td>
+      <td>${pkg.version}</td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td style="font-family: monospace; font-size:12px">${pkg.resolved}</td>
+    `;
+
+    tbody.appendChild(row);
+  });
+}
+
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const text = await file.text();
+
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (err) {
+    alert("Invalid JSON");
+    return;
+  }
+
+  const packages = extractPackages(json);
+  render(packages);
+});
+</script>
+
+</body>
+</html>
