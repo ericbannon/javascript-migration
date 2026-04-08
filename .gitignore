@@ -1,0 +1,5 @@
+.npmrc
+.artifactory.npmrc
+node_modules/
+.next/
+dist/
